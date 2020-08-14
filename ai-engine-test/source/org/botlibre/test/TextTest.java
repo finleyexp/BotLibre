@@ -26,6 +26,7 @@ import org.botlibre.Bot;
 import org.botlibre.knowledge.Bootstrap;
 import org.botlibre.knowledge.database.DatabaseMemory;
 import org.botlibre.sense.text.TextEntry;
+import org.botlibre.thought.language.Language;
 
 import junit.framework.Assert;
 
@@ -92,6 +93,16 @@ public abstract class TextTest {
 	}
 	
 	/**
+	 * Bootstrap.
+	 */
+	public static void bootstrap(String lang) {
+		reset();
+		bot.mind().getThought(Language.class).setLanguage(lang);
+		new Bootstrap().bootstrapMemory(bot.memory(), true, false);
+		bot.shutdown();
+	}
+	
+	/**
 	 * Reset.
 	 */
 	public static void reset() {
@@ -127,6 +138,20 @@ public abstract class TextTest {
 		}
 	}
 	
+	public void assertKnownFR(String response) {
+		response = response.toLowerCase();
+		if (!(response.contains("comprends") || response.contains("accord"))) {
+			fail("Should understand: " + response);
+		}
+	}
+	
+	public void assertUnknownFR(String response) {
+		response = response.toLowerCase();
+		if (!(response.contains("sais") || response.contains("mais"))) {
+			fail("Should not know the answer: " + response);
+		}
+	}
+	
 	public void assertUnknown(String response) {
 		response = response.toLowerCase();
 		if (!(response.contains("unknown") || response.contains("not sure")
@@ -150,6 +175,20 @@ public abstract class TextTest {
 		}
 	}
 	
+	public void assertVrai(String response) {
+		response = response.toLowerCase();
+		if (!(response.contains("vrai") || response.contains("raison"))) {
+			fail("Should know answer is true: " + response);
+		}
+	}
+	
+	public void assertNon(String response) {
+		response = response.toLowerCase();
+		if (!response.contains("non") && (!response.contains("incorrect"))) {
+			fail("Should know answer is false: " + response);
+		}
+	}
+	
 	public void assertFalse(String response) {
 		response = response.toLowerCase();
 		if (!response.contains("no") && (!response.contains("incorrect")) && (!response.contains("false"))) {
@@ -170,14 +209,16 @@ public abstract class TextTest {
 
 	public static void checkResponse(String response, String... expected) {
 		boolean found = false;
-		for (String match : expected) {
-			if (response.equals(match)) {
-				found = true;
-				break;
+		if (response != null) {
+			for (String match : expected) {
+				if (response.equals(match)) {
+					found = true;
+					break;
+				}
 			}
 		}
 		if (!found) {
-			fail("Incorrect response: '" + response + "' was expecting one of " + Arrays.asList(expected));			
+			fail("Incorrect response: '" + String.valueOf(response) + "' was expecting one of " + Arrays.asList(expected));			
 		}
 	}
 

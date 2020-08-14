@@ -651,6 +651,7 @@ public class BasicVertex implements Vertex, Serializable {
 	 */
 	public Map<Vertex, Map<Relationship, Relationship>> getRelationships() {
 		if (this.relationships == null) {
+			// This is only done for SerializedMemory, not DatabaseMemory
 			this.relationships = new HashMap<Vertex, Map<Relationship, Relationship>>();
 			// Lazy init from parent.
 			if (this.original != null) {
@@ -659,6 +660,10 @@ public class BasicVertex implements Vertex, Serializable {
 					Vertex type = this.network.findById(originalRelationship.getType().getId());
 					Vertex target = this.network.findById(originalRelationship.getTarget().getId());
 					Relationship relationship = addRelationship(type, target, originalRelationship.getIndex(), true);
+					if (originalRelationship.hasMeta()) {
+						Vertex meta = this.network.findById(originalRelationship.getMeta().getId());
+						relationship.setMeta(meta);
+					}
 					relationship.setCorrectness(originalRelationship.getCorrectness());
 				}
 			} else if (this.allRelationships != null) {
@@ -1839,7 +1844,7 @@ public class BasicVertex implements Vertex, Serializable {
 		Vertex pattern = arguments.get(0).getTarget().applyEval(variables, network);
 		Vertex template = arguments.get(1).getTarget().applyEval(variables, network);
 		Relationship relationship = pattern.addRelationship(Primitive.RESPONSE, template);
-		template.addRelationship(Primitive.QUESTION, pattern);
+		template.addRelationship(Primitive.RESPONSE_QUESTION, pattern);
 		Vertex that = getRelationship(Primitive.THAT);
 		if (that != null) {
 			that = that.applyEval(variables, network);
@@ -1873,7 +1878,7 @@ public class BasicVertex implements Vertex, Serializable {
 								break;
 							}
 						}
-					}				
+					}
 				}
 				if (sentenceState != null) {
 					if (sentenceState.getNetwork() != network) {
@@ -2125,7 +2130,7 @@ public class BasicVertex implements Vertex, Serializable {
 					result = checkRelationTargetForAllWords(arguments, variables, network, left, right, relation, words);
 				}
 
-				if (result == null) {					
+				if (result == null) {
 					// Check synonyms as well.
 					Collection<Relationship> words = right.getRelationships(Primitive.SYNONYM);
 					result = checkRelationTargetForAllWords(arguments, variables, network, left, right, relation, words);
@@ -2218,7 +2223,7 @@ public class BasicVertex implements Vertex, Serializable {
 			Vertex item = vertex;
 			if (vertex.instanceOf(Primitive.ARRAY)) {
 				list = vertex;
-				item = this;					
+				item = this;
 			}
 			Collection<Relationship> elements = list.orderedRelationships(Primitive.ELEMENT);
 			if (elements != null) {
@@ -2234,7 +2239,7 @@ public class BasicVertex implements Vertex, Serializable {
 			Vertex item = vertex;
 			if (vertex.instanceOf(Primitive.LIST)) {
 				list = vertex;
-				item = this;					
+				item = this;
 			}
 			Collection<Relationship> elements = list.orderedRelationships(Primitive.SEQUENCE);
 			if (elements != null) {
@@ -2253,9 +2258,22 @@ public class BasicVertex implements Vertex, Serializable {
 			match = (Vertex)(Object)this;
 		} else {
 			if (instanceOf(Primitive.PATTERN)) {
-				return Language.evaluatePattern(this, vertex, Primitive.WILDCARD, new HashMap<Vertex, Vertex>(), this.network);
+				Language language = this.network.getBot().mind().getThought(Language.class);
+				return language.evaluatePattern(this, vertex, Primitive.WILDCARD, new HashMap<Vertex, Vertex>(), this.network);
 			} else if (vertex.instanceOf(Primitive.PATTERN)) {
-				return Language.evaluatePattern(vertex, this, Primitive.WILDCARD, new HashMap<Vertex, Vertex>(), this.network);
+				Language language = this.network.getBot().mind().getThought(Language.class);
+				return language.evaluatePattern(vertex, this, Primitive.WILDCARD, variables, this.network);
+			}
+			if (instanceOf(Primitive.REGEX) && vertex.getData() instanceof String) {
+				Vertex regex = getRelationship(Primitive.REGEX);
+				if (regex != null) {
+					return vertex.getDataValue().matches(regex.getDataValue());
+				}
+			} else if (getData() instanceof String && vertex.instanceOf(Primitive.REGEX)) {
+				Vertex regex = vertex.getRelationship(Primitive.REGEX);
+				if (regex != null) {
+					return getDataValue().matches(regex.getDataValue());
+				}
 			}
 			// Match primitives to words.
 			if (isPrimitive() && hasRelationship(Primitive.WORD, vertex)) {
@@ -2305,7 +2323,7 @@ public class BasicVertex implements Vertex, Serializable {
 					} else {
 						continue;
 					}
-				}				
+				}
 			} else if (type.isVariable()) {
 				// If the type is a variable, then must check if any types match, and check if their target matches.
 				// If the type is a match, but no targets are, then the type cannot be a match.
@@ -3335,7 +3353,7 @@ public class BasicVertex implements Vertex, Serializable {
 						element.getTarget().addRelationship(type, target);
 					}
 				} else {
-					relation.addRelationship(type, target);					
+					relation.addRelationship(type, target);
 				}
 			}
 		}
@@ -3357,8 +3375,45 @@ public class BasicVertex implements Vertex, Serializable {
 			return;
 		}
 		for (Relationship relationship : relationships) {
-			relationship.getTarget().removeRelationship(type, target);				
+			relationship.getTarget().removeRelationship(type, target);
 		}
+	}
+	
+	/**
+	 * Return if the vertex has each of the related values in the correct order.
+	 */
+	public boolean hasAll(Primitive type, List<Vertex> values, boolean ordered) {
+		if (values == null || values.isEmpty()) {
+			return true;
+		}
+		if (!ordered) {
+			return orderedRelations(type).containsAll(values);
+		}
+		List<Vertex> sourceValues = orderedRelations(type);
+		if (sourceValues == null) {
+			return false;
+		}
+		int sourceIndex = 0;
+		int startIndex = 0;
+		int index = 0;
+		while (index < values.size()) {
+			if (sourceIndex >= sourceValues.size()) {
+				break;
+			}
+			Vertex value = values.get(index);
+			Vertex sourceValue = sourceValues.get(sourceIndex);
+			if (value.equalsIgnoreCase(sourceValue)) {
+				if (index == 0) {
+					startIndex = sourceIndex;
+				}
+				index++;
+			} else if (index > 0) {
+				index = 0;
+				sourceIndex = startIndex;
+			}
+			sourceIndex++;
+		}
+		return index == values.size();
 	}
 	
 	/**
@@ -3991,6 +4046,20 @@ public class BasicVertex implements Vertex, Serializable {
 	}
 	
 	/**
+	 * Return the type of the first relationship to the target.
+	 */
+	public synchronized Vertex getRelationshipType(Vertex target) {
+		Iterator<Relationship> relationships = allRelationships();
+		while (relationships.hasNext()) {
+			Relationship relationship = relationships.next();
+			if (relationship.getTarget().equals(target)) {
+				return relationship.getType();
+			}
+		}
+		return null;
+	}
+	
+	/**
 	 * Return if the vertex has any relationship to any target.
 	 */
 	public synchronized boolean hasAnyRelationshipToTarget(Vertex target) {
@@ -4149,7 +4218,7 @@ public class BasicVertex implements Vertex, Serializable {
 	}
 	
 	@SuppressWarnings("unchecked")
-	protected void setDataValue(String value) {
+	public void setDataValue(String value) {
 		if (value == null) {
 			this.data = null;
 			return;
@@ -4208,7 +4277,7 @@ public class BasicVertex implements Vertex, Serializable {
 	}
 	
 	@SuppressWarnings("unchecked")
-	protected void setDataType(String type) {
+	public void setDataType(String type) {
 		this.dataType = type;
 		if (this.data instanceof String) {
 			try {
@@ -4433,10 +4502,14 @@ public class BasicVertex implements Vertex, Serializable {
 			writer.write(this.data.toString());
 		} else if (instanceOf(Primitive.FRAGMENT) || instanceOf(Primitive.SENTENCE)) {
 			return Language.printFragment(this, this.network.createVertex(Primitive.NULL), this.network.createVertex(Primitive.NULL), network);
+		} else if (hasRelationship(Primitive.NAME) && getRelationship(Primitive.NAME).hasData()) {
+			writer.write(mostConscious(Primitive.NAME).getData().toString());
+		} else if (hasRelationship(Primitive.WORD) && getRelationship(Primitive.WORD).hasData()) {
+			writer.write(mostConscious(Primitive.WORD).getData().toString());
 		} else if (getName() != null) {
 			writer.write(getName());
 		} else {
-			writer.write("{" + String.valueOf(getId()) + "}");			
+			writer.write("{" + String.valueOf(getId()) + "}");
 		}
 		return writer.toString();
 	}

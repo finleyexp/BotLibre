@@ -217,14 +217,15 @@ public class Skype extends BasicSense {
 	
 	public String processMessage(String json) {
 		SkypeActivity input = new SkypeActivity(json);
-		
-		if(input.type.equals("message")) {
+		if (input.type.equals("message")) {
 			try {
-				String message = processMessage(input.fromName, input.recipientName, input.text, input.conversationId);
-				return sendResponse(input, message);
-			} catch (Exception e) {
-				log("Skype send response exception", Level.INFO, e.toString());
-				e.printStackTrace();
+				String message = processMessage(input.fromId, input.fromName, input.recipientName, input.text, input.conversationId);
+				if (message != null && !message.isEmpty()) {
+					return sendResponse(input, message);
+				}
+			} catch (Exception exception) {
+				log("Skype send response exception", Level.INFO, exception.toString());
+				exception.printStackTrace();
 				return null;
 			}
 		}
@@ -234,13 +235,13 @@ public class Skype extends BasicSense {
 	/**
 	 * Process to the message and reply synchronously.
 	 */
-	public String processMessage(String from, String target, String message, String id) {
+	public String processMessage(String fromId, String from, String target, String message, String id) {
 		log("Processing message", Level.INFO, message);
 		
 		this.responseListener = new ResponseListener();
 		Network memory = bot.memory().newMemory();
 		this.messagesProcessed++;
-		inputSentence(message, from, target, id, memory);
+		inputSentence(message, fromId, from, target, id, memory);
 		memory.save();
 		String reply = null;
 		synchronized (this.responseListener) {
@@ -262,12 +263,11 @@ public class Skype extends BasicSense {
 	/**
 	 * Process the text sentence.
 	 */
-	public void inputSentence(String text, String userName, String targetUsername, String id, Network network) {
+	public void inputSentence(String text, String userId, String userName, String targetUsername, String id, Network network) {
 		Vertex input = createInput(text.trim(), network);
-		Vertex user = network.createSpeaker(userName);
+		Vertex user = network.createUniqueSpeaker(new Primitive(userId), Primitive.SKYPE, userName);
 		Vertex self = network.createVertex(Primitive.SELF);
-		input.addRelationship(Primitive.SPEAKER, user);		
-		
+		input.addRelationship(Primitive.SPEAKER, user);
 		input.addRelationship(Primitive.TARGET, self);
 
 		Vertex conversationId = network.createVertex(id);
@@ -310,14 +310,16 @@ public class Skype extends BasicSense {
 	@Override
 	public void output(Vertex output) {
 		if (!isEnabled()) {
+			notifyResponseListener();
 			return;
 		}
 		Vertex sense = output.mostConscious(Primitive.SENSE);
 		// If not output to skype, ignore.
 		if ((sense == null) || (!getPrimitive().equals(sense.getData()))) {
+			notifyResponseListener();
 			return;
 		}
-		String text = printInput(output);	
+		String text = printInput(output);
 		
 		//Strip html tags from response
 		text = Utils.stripTags(text);
@@ -331,17 +333,7 @@ public class Skype extends BasicSense {
 		if (conversation != null) {
 			this.responseListener.conversation = conversation.getDataValue();
 		}
-		
-		Vertex command = output.mostConscious(Primitive.COMMAND);
-		
-		// If the response is empty, do not send it.
-		if (command == null && text.isEmpty()) {
-			return;
-		}
-		
-		synchronized (this.responseListener) {
-			this.responseListener.notifyAll();
-		}
+		notifyResponseListener();
 	}
 	
 	/**

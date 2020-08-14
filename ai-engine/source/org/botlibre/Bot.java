@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- *  Copyright 2014-2017 Paphus Solutions Inc.
+ *  Copyright 2014-2018 Paphus Solutions Inc.
  *
  *  Licensed under the Eclipse Public License, Version 1.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -60,14 +60,19 @@ import org.w3c.dom.NodeList;
  * and controls module registration, startup and shutdown.
  * It defines a singleton that represents the system.
  */
-public class Bot {	
+public class Bot {
 	public static String PROGRAM = "Bot";
-	public static String VERSION = "6.1.0-2017-12-08";
+	public static String VERSION = "8.4.9-2020-07-29";
 	
 	public static final Level FINE = Level.FINE;
 	public static final Level WARNING = Level.WARNING;
 	public static Level DEFAULT_DEBUG_LEVEL = Level.INFO;
 	public static final Level[] LEVELS = {Level.OFF, Level.SEVERE, Level.WARNING, Level.INFO, Level.CONFIG, Level.FINE, Level.FINER, Level.FINEST, Level.ALL};
+
+	public static final int EVERYONE = Utils.EVERYONE;
+	public static final int TEEN = Utils.TEEN;
+	public static final int MATURE = Utils.MATURE;
+	public static final int ADULT = Utils.ADULT;
 	
 	public static String CONFIG_FILE = "config.xml";
 	public static int MAX_CACHE = 100000;
@@ -86,6 +91,7 @@ public class Bot {
 	private Avatar avatar;
 	private Awareness awareness;
 	private boolean filterProfanity = true;
+	private int contentRating = Utils.TEEN;
 	private String name;
 	private ActiveState state = ActiveState.INIT;
 	public enum ActiveState {INIT, ACTIVE, POOLED, SHUTDOWN}
@@ -153,13 +159,10 @@ public class Bot {
 	
 	public static Bot fastCreateInstance(String configFile, String memory, boolean isSchema) {
 		Bot bot = new Bot();
-		long start = System.currentTimeMillis();
 		bot.parseConfigFile(configFile);
 		bot.setState(ActiveState.ACTIVE);
 		bot.log(bot, "Fast creating instance:", Level.INFO, configFile, memory, isSchema);
-		start = System.currentTimeMillis();
 		bot.memory().fastRestore(memory, isSchema);
-		start = System.currentTimeMillis();
 		bot.memory().awake();
 		bot.mind().awake();
 		bot.mood().awake();
@@ -240,6 +243,14 @@ public class Bot {
 		this.filterProfanity = filterProfanity;
 	}
 	
+	public int getContentRating() {
+		return contentRating;
+	}
+
+	public void setContentRating(int contentRating) {
+		this.contentRating = contentRating;
+	}
+
 	/**
 	 * Return the debugging level.
 	 */

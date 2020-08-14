@@ -624,9 +624,9 @@ public class Freebase extends Http { //implements DiscoverySense {
 		log("MQL", Level.FINEST, query);
 		URL get = null;
 		if (KEY.isEmpty()) {
-			get = new URL(query);
+			get = Utils.safeURL(query);
 		} else {
-			get = new URL(query + "&key=" + KEY);
+			get = Utils.safeURL(query + "&key=" + KEY);
 		}
 		Reader reader = new InputStreamReader(get.openStream(), "UTF-8");
 		StringWriter output = new StringWriter();
@@ -672,7 +672,7 @@ public class Freebase extends Http { //implements DiscoverySense {
 									token = token + "_" + nextWord.toLowerCase();
 								}
 							}
-							index++;								
+							index++;
 						}
 						Vertex compoundWord = network.createWord(word);
 						Vertex lastChecked = compoundWord.getRelationship(getPrimitive());
@@ -824,11 +824,11 @@ public class Freebase extends Http { //implements DiscoverySense {
 						result = processSearch(keywords, cascade, fork, filter, vertex.getNetwork(), new HashMap<String, Vertex>());
 					}
 					if (result != null) {
-						compoundWord = vertex.getNetwork().createWord(keywords);
+						compoundWord = vertex.getNetwork().createFragment(keywords);
 						compoundWord.addRelationship(Primitive.MEANING, result);
-						compoundWord = vertex.getNetwork().createWord(keywords.toLowerCase());
+						compoundWord = vertex.getNetwork().createFragment(keywords.toLowerCase());
 						compoundWord.addRelationship(Primitive.MEANING, result);
-						compoundWord = vertex.getNetwork().createWord(keywordscaps);
+						compoundWord = vertex.getNetwork().createFragment(keywordscaps);
 						compoundWord.addRelationship(Primitive.MEANING, result);
 					}
 					return result;

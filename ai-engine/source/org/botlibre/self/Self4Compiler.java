@@ -499,7 +499,7 @@ public class Self4Compiler extends SelfCompiler {
 					ensureNext(':', stream);
 					Vertex element = parseElement(stream, elements, debug, network);
 					// Need to pin literals.
-					element.setPinned(true);
+					pin(element);
 					if (object == null) {
 						if (attribute.equals("#data")) {
 							object = element;
@@ -708,7 +708,7 @@ public class Self4Compiler extends SelfCompiler {
 							expression = network.createVertex(new BigDecimal(data));
 						} else {
 							expression = network.createVertex(new BigInteger(data));
-						}				
+						}
 					} else {
 						expression = parseElementName(null, stream, elements, debug, network);
 					}
@@ -1182,6 +1182,11 @@ public class Self4Compiler extends SelfCompiler {
 			}
 			stream.skipWhitespace();
 			peek = stream.peek();
+			while (peek == ';') {
+				stream.skip();
+				stream.skipWhitespace();
+				peek = stream.peek();
+			}
 			index++;
 		}
 		ensureNext('}', stream);
@@ -1557,6 +1562,12 @@ public class Self4Compiler extends SelfCompiler {
 			expression.addRelationship(Primitive.GOTO, Primitive.RETURN);
 		} else if (next.equals(TEMPLATE) || next.equals(ANSWER)) {
 			Vertex template = parseElement(stream, elements, debug, network);
+			if (template.getData() instanceof String
+						&& !template.instanceOf(Primitive.TEMPLATE)
+						&& template.getDataValue().contains("{") && template.getDataValue().contains("}")) {
+				// Auto create template if contains code.
+				template = network.createTemplate("Template(\"" + template.getDataValue() + "\")");
+			}
 			expression.addRelationship(Primitive.TEMPLATE, template);
 		} else {
 			stream.setPosition(stream.getPosition() - next.length());

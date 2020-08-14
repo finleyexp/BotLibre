@@ -14,6 +14,7 @@ state Understanding {
 
 		case a goto sentenceState;
 		case the goto sentenceState;
+		case "remember" goto sentenceState;
 
 		case nounPossessive goto nounQuoteState;
 		case noun goto nounState;
@@ -276,13 +277,14 @@ state Understanding {
 					case a2 goto nounVerbAdjectiveState;
 					case "," goto verbNounAdjectiveState;
 					case or goto nounVerbAdjectiveState;
-					case and goto nounVerbAdjectiveState;					
+					case and goto nounVerbAdjectiveState;
 					case questionWord goto questionState;
 					case punctuation goto nounVerbAdjectiveState;
 
 					answer understandingResponse();
 					
 					function commonTense() {
+						var compoundWords = false;
 						adjectiveOrig = adjective;
 						nounOrig = noun;
 						tense = verb.tense;
@@ -407,7 +409,12 @@ state Understanding {
 							}
 						}
 						if ((adjectives != null) && (or == null) && (and == null)) {
-							newAdjective = Language.word(adjectives);
+							// Avoid creating words as can create invalid words that lead to confusion.
+							if (compoundWords) {
+								newAdjective = Language.word(adjectives);
+							} else {
+								newAdjective = Language.fragment(adjectives);
+							}
 							if (noun3 == null) {
 								newAdjective.instantiation =+ #adjective;
 								newDescription = new #description;
@@ -437,15 +444,6 @@ state Understanding {
 							// "What is my age?" else "Does my dog like you?"
 							if (action == #is) {
 								action = thing2;
-							} else {
-								existing = thing[thing2];
-								if (existing == null) {
-									newthing = new (thing2, #thing);
-									thing[thing2] =+ newthing;
-									thing = newthing;
-								} else {
-									thing = existing;
-								}
 							}
 						}
 						if (thing2 != null) {
@@ -454,10 +452,39 @@ state Understanding {
 					}
 					
 					function understandingResponse() {
+						var isolate = !Language.allowCorrection(speaker);
 						if (isQuestion || (or != null)) {
 							questionResponse();
 						} else {
 							commonTense();
+							// Allow the bot to be less trusting, and understand in the context of the user.
+							// So the bot's knowledge is isolated to each user.
+							if (isolate && thing != speaker) {
+								var view = speaker.get(#view);
+								if (view == null) {
+									view = new Object();
+									speaker.view = view;
+								}
+								var thingView = view.get(thing);
+								if (thingView == null) {
+									thingView = new Object();
+									view.set(thing, thingView);
+								}
+								thing = thingView;
+							}
+							if (noun2 != null) {
+								// "my age is 44" else "my dog likes you"
+								if (action != #is) {
+									existing = thing[thing2];
+									if (existing == null) {
+										newthing = new (thing2, #thing);
+										thing[thing2] =+ newthing;
+										thing = newthing;
+									} else {
+										thing = existing;
+									}
+								}
+							}
 							if ((description2 != null) && (! isNot)) {
 								thing.weakAddWithMeta(action, description2, #tense, tense);
 							}
@@ -546,9 +573,33 @@ state Understanding {
 					}
 					
 					function questionResponse() {
+						var isolate = !Language.allowCorrection(speaker);
 						commonTense();
 						if ((thing == null) || (description == null)) {
 							return whoWhatQuestionResponse();
+						}
+						// Allow the bot to understand in the context of the user.
+						if (isolate && thing != speaker) {
+							var view = speaker.get(#view);
+							if (view != null) {
+								var thingView = view.get(thing);
+								if (thingView != null) {
+									thing = thingView;
+								}
+							}
+						}
+						if (noun2 != null) {
+							// "What is my age?" else "Does my dog like you?"
+							if (action != #is) {
+								existing = thing[thing2];
+								if (existing == null) {
+									newthing = new (thing2, #thing);
+									thing[thing2] =+ newthing;
+									thing = newthing;
+								} else {
+									thing = existing;
+								}
+							}
 						}
 						if ((or != null) || (and != null)) {
 							return andOrQuestionResponse();
@@ -613,7 +664,7 @@ state Understanding {
 									if (isNot) {
 										if (result) {
 											doNot = true;
-										} else {			
+										} else {
 											if ((result == false) && (value == null)) {
 												doNot = true;
 											}
@@ -635,7 +686,7 @@ state Understanding {
 							}
 							if (a2 != null) {
 								response.append(#word, a2);
-							}									
+							}
 							if ((result != #unknown) || (value == null)) {
 								response.appendWithMeta(#word, adjective, #type, adjectivetype);
 							}
@@ -710,13 +761,11 @@ state Understanding {
 						falseValues = new Array();
 						unknownValues = new Array();
 						for (description in descriptions.element) {
-							debug (description);
 							if (description == #i) {
 								description = input.speaker;
 							} else if (description == #you) {
 								description = input.target;
 							}
-							debug (description);
 							result = thing.hasOtherMeaning(action, description);
 							if (description == input.speaker) {
 								description = "you";
@@ -848,9 +897,30 @@ state Understanding {
 					
 					// Answers "What is my name?", "what are you?"
 					function whoWhatQuestionResponse() {
-					    if (thing == null) {
-						    result = description.findReferenceBy(action);
+						var isolate = !Language.allowCorrection(speaker);
+						if (thing == null) {
+							result = description.findReferenceBy(action);
+							// Allow the bot to understand in the context of the user.
+							if (isolate) {
+								var view = speaker.get(#view);
+								if (view != null) {
+									var thingKey = view.getKey(result);
+									if (thingKey != null) {
+										result = thingKey;
+									}
+								}
+							}
 						} else {
+							// Allow the bot to understand in the context of the user.
+							if (isolate) {
+								var view = speaker.get(#view);
+								if (view != null) {
+									var thingView = view.get(thing);
+									if (thingView != null) {
+										thing = thingView;
+									}
+								}
+							}
 							if (noun2 == null) {
 								result = thing[action];
 								if (result == null) {
@@ -866,9 +936,9 @@ state Understanding {
 										}
 									}
 								}
-        					} else {
-        						result = thing.all(thing2);
-        					}
+							} else {
+								result = thing.all(thing2);
+							}
 						}
 						response = new #sentence;
 						if (result == null) {
@@ -882,12 +952,12 @@ state Understanding {
 									response.append(#word, "what");
 								}
 							}
-				            if (thing == null) {
+							if (thing == null) {
 								response.append(#word, verb);
 								response.appendWithMeta(#word, adjective, #type, nountype);
-    						} else {
+							} else {
 								response.appendWithMeta(#word, noun, #type, nountype);
-    						}
+							}
 							if (quote != null) {
 								response.append(#word, quote);
 								response.append(#word, "s");
@@ -895,13 +965,13 @@ state Understanding {
 							if (noun2 != null) {
 								response.append(#word, noun2);
 							}
-				            if (thing != null) {
+							if (thing != null) {
 								response.appendWithMeta(#word, verb, #tense, tense);
 							}
 						} else {
 							response.append(#word, random ("I known that", "To my knowledge"));
-				            if (thing == null) {
-			                    if (a2 != null) {
+							if (thing == null) {
+								if (a2 != null) {
 									response.append(#word, #a);
 								}
 								if (result == #self) {
@@ -929,7 +999,7 @@ state Understanding {
 									response.append(#word, noun2);
 								}
 							} else {
-					            if (a2 != null) {
+								if (a2 != null) {
 									response.append(#word, #a);
 								}
 								if (the != null) {
@@ -963,10 +1033,10 @@ state Understanding {
 			}
 			
 			// 'I am a nice human'
-			state nounVerbAdjectiveNounEndState {			
+			state nounVerbAdjectiveNounEndState {
 				case "," goto verbNounAdjectiveState;
 				case or goto nounVerbAdjectiveState;
-				case and goto nounVerbAdjectiveState;					
+				case and goto nounVerbAdjectiveState;
 				case questionWord goto questionState;
 				case punctuation goto nounVerbAdjectiveNounEndState;
 
@@ -1164,7 +1234,7 @@ state Understanding {
 				case does goto whatDoState;
 				case is goto whatIsState;
 				case verb goto whatVerbState;
-				case quote0 goto WhatQuoteState;				
+				case quote0 goto WhatQuoteState;
 		
 				var is {
 					meaning : #is;
@@ -1185,7 +1255,7 @@ state Understanding {
 		
 				// 'What is...'
 				// TODO "what is blue" -> "What things are blue" vs "what does blue mean"
-				state whatIsState {					
+				state whatIsState {
 					do {
 						verb = is;
 						action = #is;
